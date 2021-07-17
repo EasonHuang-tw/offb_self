@@ -2,11 +2,13 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TwistStamped.h>
 #include <sensor_msgs/NavSatFix.h>
+#include <geographic_msgs/GeoPoseStamped.h>
 
 #include <mavros_msgs/CommandBool.h>
 #include <mavros_msgs/SetMode.h>
 #include <mavros_msgs/State.h>
 #include <mavros_msgs/GlobalPositionTarget.h>
+#include <mavros_msgs/Altitude.h>
 
 #include <cstdio>
 #include <unistd.h>
@@ -32,7 +34,7 @@ float KPy = 5;		//1   3
 float KPz = 1;
 float KProll = 0;	//1  2
 bool local_offset_init_flag =0;		//flag of local position offset init
-bool gps_offset_init_flag =0;		//flag of local position offset init
+bool gps_received =0;		//flag of local position offset init
 
 mavros_msgs::State current_state;	//state
 
@@ -40,7 +42,7 @@ geometry_msgs::PoseStamped offset;
 geometry_msgs::PoseStamped host_mocap;
 
 sensor_msgs::NavSatFix gps_position;
-sensor_msgs::NavSatFix gps_position_offset;
+double latitude, longitude;
 
 /*	 call back function	*/
 
@@ -61,11 +63,16 @@ void host_pos_cb(const geometry_msgs::PoseStamped::ConstPtr& msg)	// mavros/loca
 
 void gps_pos_cb(const sensor_msgs::NavSatFix::ConstPtr& msg) {
 	gps_position = *msg;
-	if( gps_offset_init_flag  == 0){
-		gps_position_offset = gps_position;
-		gps_offset_init_flag = true;
-	}
+	latitude = msg->latitude;
+	longitude = msg->longitude;
+	gps_received = true;
     	//ROS_INFO_ONCE("Got global position: [%.2f, %.2f, %.2f]", msg->latitude, msg->longitude, msg->altitude);
+}
+
+double altitude;
+void altitude_cb(const mavros_msgs::Altitude::ConstPtr &msg)
+{
+	    altitude = msg->amsl;
 }
 
 /*	functions	*/
@@ -159,16 +166,18 @@ int main(int argc, char **argv)
 	ros::init(argc, argv, "GPS_follow_test");
 	ros::NodeHandle nh;
 
-	/*	publisth	*/
+	/*	publisher	*/
 	ros::Publisher local_pos_pub = nh.advertise<geometry_msgs::PoseStamped>
                                    ("/mavros/setpoint_position/local", 10);
-	ros::Publisher goal_pos_pub = nh.advertise < mavros_msgs::GlobalPositionTarget > ("mavros/setpoint_position/global", 10);
-
+	ros::Publisher local_vel_pub = nh.advertise<geometry_msgs::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
+	ros::Publisher goal_pos_pub = nh.advertise<geographic_msgs::GeoPoseStamped>("mavros/setpoint_position/global", 10);
+	
 	/*	subscriber	*/
 	ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>("/mavros/state", 10, state_cb);				//state
 	ros::Subscriber host_sub = nh.subscribe<geometry_msgs::PoseStamped>("mavros/local_position/pose", 10, host_pos_cb);		//local position
 	ros::Subscriber gps_sub = nh.subscribe<sensor_msgs::NavSatFix>("/mavros/global_position/global", 10, gps_pos_cb);	//gps position
-	ros::Publisher local_vel_pub = nh.advertise<geometry_msgs::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
+	ros::Subscriber sub_altitude = nh.subscribe<mavros_msgs::Altitude>("mavros/altitude", 10,altitude_cb);
+
 
 	 /*	service		*/
 	ros::ServiceClient arming_client = nh.serviceClient<mavros_msgs::CommandBool>
@@ -186,7 +195,7 @@ int main(int argc, char **argv)
 	}
 	ROS_INFO("FCU connected");
 
-    	while (ros::ok() && !gps_offset_init_flag) {
+    	while (ros::ok() && !gps_received) {
         	ROS_INFO_ONCE("Waiting for GPS signal...");
         	ros::spinOnce();
         	rate.sleep();
@@ -223,14 +232,21 @@ int main(int argc, char **argv)
 	
 	// set target position
 	mavros_msgs::GlobalPositionTarget goal_position;
-	goal_position.latitude = gps_position.latitude;
-	goal_position.longitude = gps_position.longitude;
-	goal_position.altitude = gps_position.altitude;
+	const double home_lat = latitude;
+	const double home_lon = longitude;
+	const double home_alt = altitude;
+	ROS_INFO_ONCE("GPS Received!\nlat:%f\tlon:%f\talt:%f", home_lat, home_lon, home_alt);
 
-	for (int i=0; i<20; ++i) {
-		goal_position.header.stamp = ros::Time::now();
-		goal_pos_pub.publish(goal_position);
-		ros::spinOnce();
+
+	geographic_msgs::GeoPoseStamped gsp;		//goal position
+    	gsp.pose.position.latitude = home_lat;
+       	gsp.pose.position.longitude = home_lon;
+        gsp.pose.position.altitude = home_alt;
+
+	for (int i=0 ; i<20 && ros::ok() ; i++) {
+		gsp.header.stamp = ros::Time::now();
+	 	goal_pos_pub.publish(gsp);
+	        ros::spinOnce();
 		rate.sleep();
 	}
 
@@ -322,11 +338,19 @@ int main(int argc, char **argv)
 //        mocap_pos_pub.publish(host_mocap);
         local_vel_pub.publish(vs);
 */
-	
-	goal_position.header.stamp = ros::Time::now();
-        goal_pos_pub.publish(goal_position);
-	ROS_INFO_THROTTLE(1, "At altitude %.2f", gps_position.altitude);
 
+	gsp.pose.position.latitude = home_lat;
+	gsp.pose.position.longitude = home_lon;
+	gsp.pose.position.altitude = home_alt + 0.5;
+
+	gsp.header.stamp = ros::Time::now();
+	goal_pos_pub.publish(gsp);
+
+	ROS_INFO_THROTTLE(2, "\n"
+		            	"altitude\t: %.2f\n"
+			    	"target_alt\t: %.2f",
+				altitude, gsp.pose.position.altitude
+			);
         ros::spinOnce();
         rate.sleep();
     }
