@@ -151,6 +151,8 @@ add_executable(offb_vel src/offb_vel.cpp)
 add_executable(offb_vel_kb_test src/offb_vel_kb_test.cpp)
 add_executable(pub_rc src/pub_rc.cpp)
 add_executable(trajectory src/trajectory.cpp)
+add_executable(GPS_setpoint src/GPS_setpoint.cpp)
+
 #add_executable(vision_down src/vision_down.cpp)
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -194,10 +196,13 @@ target_link_libraries(offb_vel
 target_link_libraries(pub_rc
   ${catkin_LIBRARIES}
   )
-
 target_link_libraries(trajectory
   ${catkin_LIBRARIES}
   )
+target_link_libraries(GPS_setpoint
+  ${catkin_LIBRARIES}
+  )
+
 #target_link_libraries(vision_down
 #  ${catkin_LIBRARIES}
 #  )
