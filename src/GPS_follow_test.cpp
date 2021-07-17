@@ -190,28 +190,26 @@ int main(int argc, char **argv)
     ros::Time last_request = ros::Time::now();
 	//ros::Time last_request(0);
 
-    while (ros::ok()) {
-//	mocap_pos_pub.publish(host_mocap);
-
-        if (current_state.mode != "OFFBOARD" &&
-                (ros::Time::now() - last_request > ros::Duration(5.0))) {
+        if (current_state.mode != "OFFBOARD"){
             if( set_mode_client.call(offb_set_mode) &&
                     offb_set_mode.response.mode_sent) {
                 ROS_INFO("Offboard enabled");
             }
             last_request = ros::Time::now();
         } 
-	else {
+	
 
-            if (!current_state.armed &&
-                    (ros::Time::now() - last_request > ros::Duration(5.0))) {
+        if (!current_state.armed){
                 if( arming_client.call(arm_cmd) &&
                         arm_cmd.response.success) {
                     ROS_INFO("Vehicle armed");
                 }
                 last_request = ros::Time::now();
-            }
         }
+        
+    while (ros::ok()) {
+//	mocap_pos_pub.publish(host_mocap);
+
         int c = getch();
 	//ROS_INFO("C: %d",c);
         if (c != EOF) {
