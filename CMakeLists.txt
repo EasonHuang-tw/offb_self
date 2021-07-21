@@ -152,6 +152,7 @@ add_executable(offb_vel_kb_test src/offb_vel_kb_test.cpp)
 add_executable(pub_rc src/pub_rc.cpp)
 add_executable(trajectory src/trajectory.cpp)
 add_executable(GPS_setpoint src/GPS_setpoint.cpp)
+add_executable(GPS_position_control src/GPS_position_control.cpp)
 
 #add_executable(vision_down src/vision_down.cpp)
 ## Rename C++ executable without prefix
@@ -200,6 +201,9 @@ target_link_libraries(trajectory
   ${catkin_LIBRARIES}
   )
 target_link_libraries(GPS_setpoint
+  ${catkin_LIBRARIES}
+  )
+target_link_libraries(GPS_position_control
   ${catkin_LIBRARIES}
   )
 
