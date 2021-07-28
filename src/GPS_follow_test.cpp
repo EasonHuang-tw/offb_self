@@ -1,23 +1,42 @@
 #include <ros/ros.h>
+#include <iostream>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TwistStamped.h>
-#include <mavros_msgs/CommandBool.h>
-#include <mavros_msgs/SetMode.h>
-#include <mavros_msgs/State.h>
+#include <Eigen/Geometry>
+#include <Eigen/Dense>
 #include <cstdio>
 #include <unistd.h>
 #include <termios.h>
 #include <fcntl.h>
+#include <math.h>
+#include <mavros_msgs/CommandBool.h>
+#include <mavros_msgs/SetMode.h>
+#include <mavros_msgs/State.h>
+#include <sensor_msgs/NavSatFix.h>
+#include <tf/transform_datatypes.h>
 #define pi 3.1415926
-int flag=0;
-float KPx = 5;//1   3
-float KPy = 5;//1   3
-float KPz = 1;
-float KProll = 0;//1  2
+#define XY_VEL_MAX 0.5
+//gain
+#define KPx 5.0f//1   3
+#define KPy 5.0f//1   3
+#define KPz 1.0f//
+#define KProll 1.0f//1  2
+
+//earth radius
+#define a 6377397.155
+#define b 6356078.965
+
 bool init=0;
 
+//
+float GPS_init = 0;
+double home_longitude,home_latitude,home_height_msl;
+double home_ecef_x,home_ecef_y,home_ecef_z;
+double x_enu,y_enu,z_enu;
+double r11,r12,r13,r21,r22,r23,r31,r32,r33;
+
 using namespace std;
-typedef struct vir
+struct vir
 {
     float roll;
     float x;
@@ -31,6 +50,88 @@ void state_cb(const mavros_msgs::State::ConstPtr& msg) {
 }
 geometry_msgs::PoseStamped offset;
 geometry_msgs::PoseStamped host_mocap;
+
+double latitude, longitude, altitude;
+
+//geodetic to ECEF
+float N(float phi){  //degree to rad
+	float e;
+	e = 1 - b*b/(a*a); 
+	return a/sqrt(1 - (sin(phi/180*pi)*e)*(sin(phi/180*pi)*e));
+}
+
+
+void set_home_longitude_latitude(double longitude, double latitude, double height_msl)
+{
+	double sin_lambda = sin((longitude/180)*pi);
+	double cos_lambda = cos((longitude/180)*pi);
+	double sin_phi = sin((latitude/180)*pi);
+	double cos_phi = cos((latitude/180)*pi);
+
+	home_longitude = longitude;
+	home_latitude = latitude;
+	home_height_msl = height_msl;
+	
+	r11 = -sin_lambda;
+	r12 = cos_lambda;
+	r13 = 0;
+	r21 = -cos_lambda * sin_phi;
+	r22 = -sin_lambda * sin_phi;
+	r23 = cos_phi;
+	r31 = cos_phi*cos_lambda;
+	r32 = cos_phi*sin_lambda;
+	r33 = sin_phi;
+	
+	home_ecef_x = (N(latitude)+height_msl)*cos_phi*cos_lambda;
+	home_ecef_y = (N(latitude)+height_msl)*cos_phi*sin_lambda;
+	home_ecef_z = ((b*b/(a*a))*N(height_msl)+height_msl)*sin_phi;
+}
+
+void gps_pos_cb(const sensor_msgs::NavSatFix::ConstPtr& msg) {
+
+	latitude = msg->latitude;
+	longitude = msg->longitude;
+	altitude = msg->altitude;
+	//gps_received = true;
+	
+	//set home point
+	if(GPS_init < 5){ 
+		set_home_longitude_latitude(longitude,latitude,altitude);
+		GPS_init ++;
+	}
+	
+    	//ROS_INFO_ONCE("Got global position: [%.2f, %.2f, %.2f]", msg->latitude, msg->longitude, msg->altitude);
+    	
+	double sin_lambda = sin((longitude/180)*pi);
+	double cos_lambda = cos((longitude/180)*pi);
+	double sin_phi = sin((latitude/180)*pi);
+	double cos_phi = cos((latitude/180)*pi);
+	
+	//ECEF
+    	double X,Y,Z;
+    	X = (N(latitude)+altitude)*cos_phi*cos_lambda;
+    	Y = (N(latitude)+altitude)*cos_phi*sin_lambda;
+    	Z = (b*b/(a*a)*N(latitude)+altitude)*sin_phi;
+
+	double dx = X - home_ecef_x;
+	double dy = Y - home_ecef_y;
+	double dz = altitude - home_height_msl;
+	//ENU
+	x_enu = (r11 * dx) + (r12 * dy) + (r13 * dz);
+	y_enu = (r21 * dx) + (r22 * dy) + (r23 * dz);
+	z_enu = (r31 * dx) + (r32 * dy) + (r33 * dz); ; //barometer of height sensor
+	
+	cout << "ENU" << endl;
+	cout << x_enu << endl;
+	cout << y_enu << endl;
+	cout << z_enu << endl;
+	
+	//local 
+	
+    	
+}
+
+
 void host_pos(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
 
@@ -57,34 +158,43 @@ float qua2eul(geometry_msgs::PoseStamped& host_mocap)
 }
 void follow(vir& vir, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::TwistStamped* vs, float dis_x, float dis_y)
 {
-float errx, erry, errz, err_roll;
-float ux, uy, uz, uroll;
-//float dis_x = 0, dis_y = -0.5;
-float local_x, local_y;
+	float err_x, err_y, err_z, err_roll;
+	float u_x, u_y, u_z, u_roll;
+	//float dis_x = 0, dis_y = -0.5;
+	float local_x, local_y;
 
-local_x = cos(vir.roll)*dis_x+sin(vir.roll)*dis_y;
-local_y = -sin(vir.roll)*dis_x+cos(vir.roll)*dis_y;
+	local_x = cos(vir.roll)*dis_x+sin(vir.roll)*dis_y;
+	local_y = -sin(vir.roll)*dis_x+cos(vir.roll)*dis_y;
 
-errx = vir.x - host_mocap.pose.position.x - local_x;
-erry = vir.y - host_mocap.pose.position.y - local_y;
-errz = vir.z - host_mocap.pose.position.z - 0;
-err_roll = vir.roll - qua2eul(host_mocap);
-if(err_roll>pi)
-err_roll = err_roll - 2*pi;
-else if(err_roll<-pi)
-err_roll = err_roll + 2*pi;
+	err_x = vir.x - host_mocap.pose.position.x - local_x;
+	err_y = vir.y - host_mocap.pose.position.y - local_y;
+	err_z = vir.z - host_mocap.pose.position.z - 0;
+	err_roll = vir.roll - qua2eul(host_mocap);
+	
+	if(err_roll>pi)
+		err_roll = err_roll - 2*pi;
+	else if(err_roll<-pi)
+		err_roll = err_roll + 2*pi;
 
-ROS_INFO("err_roll: %.3f",err_roll);
+	ROS_INFO("err_roll: %.3f",err_roll);
 
-ux = KPx*errx;
-uy = KPy*erry;
-uz = KPz*errz;
-uroll = KProll*err_roll;
+	u_x = KPx*err_x;
+	u_y = KPy*err_y;
+	u_z = KPz*err_z;
+	u_roll = KProll*err_roll;
 
-vs->twist.linear.x = ux;
-vs->twist.linear.y = uy;
-vs->twist.linear.z = uz;
-vs->twist.angular.z = uroll;
+//	set upper bound	
+	u_x = u_x > XY_VEL_MAX ? XY_VEL_MAX : u_x;
+	u_y = u_y > XY_VEL_MAX ? XY_VEL_MAX : u_y;
+	u_z = u_z > XY_VEL_MAX ? XY_VEL_MAX : u_z;
+	u_x = u_x < -XY_VEL_MAX ? -XY_VEL_MAX : u_x;
+	u_y = u_y < -XY_VEL_MAX ? -XY_VEL_MAX : u_y;
+	u_z = u_z < -XY_VEL_MAX ? -XY_VEL_MAX : u_z;
+
+	vs->twist.linear.x = u_x;
+	vs->twist.linear.y = u_y;
+	vs->twist.linear.z = u_z;
+	vs->twist.angular.z = u_roll;
 
 }
 /*
@@ -133,14 +243,12 @@ int main(int argc, char **argv)
                                 ("/mavros/state", 10, state_cb);
     ros::Publisher local_pos_pub = nh.advertise<geometry_msgs::PoseStamped>
                                    ("/mavros/setpoint_position/local", 10);
-//    ros::Publisher mocap_pos_pub = nh.advertise<geometry_msgs::PoseStamped>
-//                                  ("drone2/mavros/mocap/pose", 10);
     ros::ServiceClient arming_client = nh.serviceClient<mavros_msgs::CommandBool>
                                        ("/mavros/cmd/arming");
     ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>
                                          ("/mavros/set_mode");
-    //ros::Subscriber host_sub = nh.subscribe<geometry_msgs::PoseStamped>("/vrpn_client_node/RigidBody7/pose", 10, host_pos);
     ros::Subscriber host_sub = nh.subscribe<geometry_msgs::PoseStamped>("mavros/local_position/pose", 10, host_pos);
+	ros::Subscriber gps_sub = nh.subscribe<sensor_msgs::NavSatFix>("/mavros/global_position/global", 10, gps_pos_cb);	//gps position
     ros::Publisher local_vel_pub = nh.advertise<geometry_msgs::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
  
     // The setpoint publishing rate MUST be faster than 2Hz.
@@ -251,7 +359,6 @@ int main(int argc, char **argv)
 			offb_set_mode.request.custom_mode = "MANUAL";
 			set_mode_client.call(offb_set_mode);
 			arm_cmd.request.value = false;
-			arming_client.call(arm_cmd);
             break;
 			}
             case 63:
