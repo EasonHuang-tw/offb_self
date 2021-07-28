@@ -7,12 +7,13 @@ project(offb_self)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS
+find_package(
+  catkin REQUIRED COMPONENTS
   roscpp
-  #svo_msgs
   std_msgs
-  #apriltags2_ros
-)
+  tf
+  )
+find_package (Eigen3 3.3 REQUIRED NO_MODULE)
 find_package(message_generation)
 #set(apriltags2_ros_DIR /home/ncrl/svo_install_overlay_ws/src)
 ## System dependencies are found with CMake's conventions
@@ -70,10 +71,10 @@ find_package(message_generation)
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   std_msgs  # Or other packages containing msgs
-# )
+generate_messages(
+   DEPENDENCIES
+   std_msgs  # Or other packages containing msgs
+)
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -206,6 +207,33 @@ target_link_libraries(GPS_setpoint
 target_link_libraries(GPS_position_control
   ${catkin_LIBRARIES}
   )
+
+#===============================================#
+#		GPS_mission			#
+#===============================================#
+set(INC
+	./src
+	./src/GPS_mission
+	./src/GPS_mission/lib
+	)
+set(SRC
+	./src/GPS_mission/GPS_mission.cpp
+	./src/GPS_mission/gps_transform.cpp
+	)
+include_directories(
+	  ${catkin_INCLUDE_DIRS}
+	  ${EIGEN3_INCLUDE_DIR}
+	  ${INC}
+	  )
+
+add_executable(GPS_mission
+	${SRC}
+)
+target_link_libraries(GPS_mission
+  ${catkin_LIBRARIES}
+  Eigen3::Eigen
+  )
+
 
 #target_link_libraries(vision_down
 #  ${catkin_LIBRARIES}
