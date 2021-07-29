@@ -26,7 +26,6 @@
 bool init=0;
 
 //
-float GPS_init = 0;
 gps_transform gps;
 using namespace std;
 struct vir	//virtual leader pose
@@ -50,35 +49,22 @@ void gps_pos_cb(const sensor_msgs::NavSatFix::ConstPtr& msg) {
 	double latitude = msg->latitude;
 	double longitude = msg->longitude;
 	double altitude = msg->altitude;
-	//gps_received = true;
 	
 	//set home point
-	if(GPS_init < 5){ 
-//		set_home_longitude_latitude(longitude,latitude,altitude);
+	if(gps.is_init() == false){ 
 		
-		gps.set_home_longitude_latitude(longitude,latitude,altitude);
-		GPS_init ++;
+		gps.set_home_longitude_latitude(latitude,longitude,altitude);
 	}
 	
-    	//ROS_INFO_ONCE("Got global position: [%.2f, %.2f, %.2f]", msg->latitude, msg->longitude, msg->altitude);
+    	ROS_INFO_ONCE("Got global position: [%.2f, %.2f, %.2f]", msg->latitude, msg->longitude, msg->altitude);
     
-
-	gps.ECEF_calculate(latitude,longitude,altitude);
-
-	
+	gps.update(latitude,longitude,altitude);
+	/*
 	double ecef_msg[3];
 	gps.get_ECEF(ecef_msg);
-
-	
-	gps.ECEF_2_ENU();
-	
 	double enu_msg[3];
 	gps.get_ENU(enu_msg);
-	cout << "ENU(new) \tx:" << enu_msg[0] <<",\ty: " << enu_msg[1]<<",\tz: " << enu_msg[2] << endl;
-	
-	//local 
-	
-    	
+	*/	
 }
 
 
@@ -179,15 +165,15 @@ int main(int argc, char **argv)
 
     ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>
                                 ("/mavros/state", 10, state_cb);
+    ros::Subscriber host_sub = nh.subscribe<geometry_msgs::PoseStamped>("mavros/local_position/pose", 10, host_pos);
+    ros::Subscriber gps_sub = nh.subscribe<sensor_msgs::NavSatFix>("/mavros/global_position/global", 10, gps_pos_cb);	//gps position
+    ros::Publisher local_vel_pub = nh.advertise<geometry_msgs::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
     ros::Publisher local_pos_pub = nh.advertise<geometry_msgs::PoseStamped>
                                    ("/mavros/setpoint_position/local", 10);
     ros::ServiceClient arming_client = nh.serviceClient<mavros_msgs::CommandBool>
                                        ("/mavros/cmd/arming");
     ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>
                                          ("/mavros/set_mode");
-    ros::Subscriber host_sub = nh.subscribe<geometry_msgs::PoseStamped>("mavros/local_position/pose", 10, host_pos);
-	ros::Subscriber gps_sub = nh.subscribe<sensor_msgs::NavSatFix>("/mavros/global_position/global", 10, gps_pos_cb);	//gps position
-    ros::Publisher local_vel_pub = nh.advertise<geometry_msgs::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
  
     // The setpoint publishing rate MUST be faster than 2Hz.
     ros::Rate rate(100);
@@ -316,7 +302,7 @@ int main(int argc, char **argv)
 	local_vel_pub.publish(vs);
 
         ros::spinOnce();
-        rate.sleep();
+        //rate.sleep();
     }
 
     return 0;
