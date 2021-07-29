@@ -7,6 +7,8 @@
 #include <mavros_msgs/SetMode.h>
 #include <mavros_msgs/State.h>
 #include <sensor_msgs/NavSatFix.h>
+#include <mavros_msgs/CommandTOL.h>
+
 #include <cstdio>
 #include <unistd.h>
 #include <termios.h>
@@ -14,6 +16,7 @@
 #include <math.h>
 
 #include "gps_transform.h"
+#include "autopilot.h"
 
 #define XY_VEL_MAX 0.5
 //gain
@@ -27,6 +30,8 @@ bool init=0;
 
 //
 gps_transform gps;
+
+
 using namespace std;
 struct vir	//virtual leader pose
 {
@@ -80,19 +85,17 @@ void host_pos(const geometry_msgs::PoseStamped::ConstPtr& msg)
 }
 
 
-void follow(vir& vir, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::TwistStamped* vs, float dis_x, float dis_y)
+void follow(double* desired , double* recent, geometry_msgs::TwistStamped* vs, float dis_x, float dis_y)
 {
 	float err_x, err_y, err_z, err_roll;
 	float u_x, u_y, u_z, u_roll;
 	//float dis_x = 0, dis_y = -0.5;
 	float local_x, local_y;
-
+/*
 	local_x = cos(vir.roll)*dis_x+sin(vir.roll)*dis_y;
 	local_y = -sin(vir.roll)*dis_x+cos(vir.roll)*dis_y;
 
-	err_x = vir.x - host_mocap.pose.position.x;
-	err_y = vir.y - host_mocap.pose.position.y;
-	err_z = vir.z - host_mocap.pose.position.z - 0;
+
 		
 	err_roll = vir.roll - tf::getYaw(host_mocap.pose.orientation);
 	if(err_roll>pi)
@@ -101,11 +104,15 @@ void follow(vir& vir, geometry_msgs::PoseStamped& host_mocap, geometry_msgs::Twi
 		err_roll = err_roll + 2*pi;
 
 	//ROS_INFO("err_roll: %.3f",err_roll);
+*/
+	err_x = desired[0] - recent[0];
+	err_y = desired[1] - recent[1];
+	err_z = desired[2] - recent[2];
 
 	u_x = KPx*err_x;
 	u_y = KPy*err_y;
 	u_z = KPz*err_z;
-	u_roll = KProll*err_roll;
+	//u_roll = KProll*err_roll;
 
 //	set upper bound	
 	u_x = u_x > XY_VEL_MAX ? XY_VEL_MAX : u_x;
@@ -174,7 +181,8 @@ int main(int argc, char **argv)
                                        ("/mavros/cmd/arming");
     ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>
                                          ("/mavros/set_mode");
- 
+ ros::ServiceClient land_client = nh.serviceClient<mavros_msgs::CommandTOL>
+      ("mavros/cmd/land");
     // The setpoint publishing rate MUST be faster than 2Hz.
     ros::Rate rate(100);
 
@@ -208,7 +216,7 @@ int main(int argc, char **argv)
 //		mocap_pos_pub.publish(host_mocap);
 	vir1.x=offset.pose.position.x;
 	vir1.y=offset.pose.position.y;
-	vir1.z=offset.pose.position.z + 0.5;	
+	vir1.z=offset.pose.position.z;	
 	ros::spinOnce();
         rate.sleep();
     }
@@ -238,7 +246,11 @@ int main(int argc, char **argv)
                 }
                 last_request = ros::Time::now();
         }
-        
+       while(gps.is_init()==false){
+		ros::spinOnce();
+        	rate.sleep();
+       }
+       autopilot ap(gps);
     while (ros::ok()) {
 //	mocap_pos_pub.publish(host_mocap);
 
@@ -279,10 +291,17 @@ int main(int argc, char **argv)
                 break;
 		}
 		case 108:    // close arming
-			{
+			{/*
 			offb_set_mode.request.custom_mode = "MANUAL";
 			set_mode_client.call(offb_set_mode);
 			arm_cmd.request.value = false;
+			arming_client.call(arm_cmd);*/
+			    mavros_msgs::CommandTOL land_cmd;
+			    land_cmd.request.yaw = 0;
+			    land_cmd.request.latitude = 0;
+			    land_cmd.request.longitude = 0;
+			    land_cmd.request.altitude = 0;
+			    land_client.call(land_cmd);
             break;
 			}
             case 63:
@@ -296,13 +315,31 @@ int main(int argc, char **argv)
 		vir1.roll = vir1.roll + 2*pi;
 
         //ROS_INFO("setpoint: %.2f, %.2f, %.2f, %.2f", vir1.x, vir1.y, vir1.z, vir1.roll/pi*180);
-	follow(vir1,host_mocap,&vs,0,0);
+	//follow(vir1,host_mocap,&vs,0,0);
 //        mocap_pos_pub.publish(host_mocap);
 //	std::system("clear");
+	
+	double now_pos[3];
+	gps.get_ENU(now_pos);
+	ap.update(now_pos);
+	cout << "now_pos \tx:"<<now_pos[0]<<"\ty:"<<now_pos[1]<<"\tz:"<<now_pos[2]<<endl;
+	follow(ap.get_target_now(),now_pos,&vs,0,0);
+	if(ap.get_land_ok() == true){
+	    mavros_msgs::CommandTOL land_cmd;
+	    land_cmd.request.yaw = 0;
+	    land_cmd.request.latitude = 0;
+	    land_cmd.request.longitude = 0;
+	    land_cmd.request.altitude = 0;
+	    land_client.call(land_cmd);	
+	}
+	
+
+
 	local_vel_pub.publish(vs);
 
         ros::spinOnce();
-        //rate.sleep();
+	
+        rate.sleep();
     }
 
     return 0;

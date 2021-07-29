@@ -215,10 +215,12 @@ set(INC
 	./src
 	./src/GPS_mission
 	./src/GPS_mission/lib
+	./src/GPS_mission/autopilot
 	)
 set(SRC
 	./src/GPS_mission/GPS_mission.cpp
 	./src/GPS_mission/gps_transform.cpp
+	./src/GPS_mission/autopilot/autopilot.cpp
 	)
 include_directories(
 	  ${catkin_INCLUDE_DIRS}

@@ -66,7 +66,7 @@ void gps_transform::ECEF_2_ENU_update(double X,double Y,double Z,double *ENU_pos
 	double dx =this-> X - home_ecef_x;
 	double dy =this-> Y - home_ecef_y;
 	double dz =this-> Z - home_ecef_z;
-	cout << "delta(new) \tx:"<<dx<<"\ty:"<<dy<<"\tz:"<<dz<<endl;
+	//cout << "delta(new) \tx:"<<dx<<"\ty:"<<dy<<"\tz:"<<dz<<endl;
 	//ENU
 	this->x_enu = (this->r11 * dx) + (this->r12 * dy) + (this->r13 * dz);
 	this->y_enu = (this->r21 * dx) + (this->r22 * dy) + (this->r23 * dz);
