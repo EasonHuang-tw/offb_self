@@ -4,7 +4,7 @@
 #include <iostream>
 #include <math.h>
 #define pi M_PI
-#define a 6377397. 
+#define a 6377397.155 
 #define b 6356078.965
 class gps_transform{
 	public:
@@ -24,7 +24,7 @@ class gps_transform{
 		double cos_phi;
 		
 		double latitude, longitude, altitude;
-    		double X,Y,Z;
+    	double X,Y,Z;
 		double x_enu,y_enu,z_enu;
 		double home_longitude,home_latitude,home_height_msl; 
 		double home_ecef_x,home_ecef_y,home_ecef_z;
