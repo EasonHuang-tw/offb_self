@@ -1,6 +1,8 @@
 #include <iostream>
+#include <ros/ros.h>
 #include<thread>
 #include<vector>
+#include<sensor_msgs/NavSatFix.h>
 #include "autopilot.h"
 
 #define error 0.1
@@ -11,7 +13,7 @@ autopilot::autopilot(gps_transform gps){
 	this->gps = gps;
 	double *pose_now = new double[3];
 	double *target_now = new double[3];
-	mission = 0;
+	state = autopilot_state::not_flying;
 	land_ok = false;
 	
 
@@ -21,51 +23,114 @@ void autopilot::update(double *recent_pose){
 	pose_now[0] = recent_pose[0];
 	pose_now[1] = recent_pose[1];
 	pose_now[2] = recent_pose[2];
-	
-	if (get_mission() == 0){
+	if (get_state() == autopilot_state::pose){
+	}
+	if (get_state() == autopilot_state::takeoff){
 		takeoff();
+		ROS_INFO_ONCE("start takeoff");
 		if(is_arrived_z() == true){
-			mission = 1;
-			this->gps.update(47.3977545,8.5457408,535.5597166987343);
-			this->gps.get_ENU(target_now);
-			target_now[2] = 1;
+			if(in_mission == true){
+				state = autopilot_state::waypoint;
+				ROS_INFO("go to waypoint %d",waypoint_num);
+			}
+			else{
+				state = autopilot_state::pose;
+				ROS_INFO("start pose control");
+			}
 		}
 	}
 
-	if(get_mission() == 1){
-		
+	if(get_state() == autopilot_state::waypoint){
+		double lat = waypoints[waypoint_num].latitude;
+		double lon = waypoints[waypoint_num].longitude;
+		double alt = waypoints[waypoint_num].altitude;
+
+		this->gps.update(lat,lon,alt);
+		this->gps.get_ENU(target_now);
+		target_now[2] = 1;
 		if(is_arrived_xy() == true){
-			mission = 2;
-			this->gps.update(47.3978816,8.5459172,535.8185302211843);
-			this->gps.get_ENU(target_now);
-			target_now[2] = 1;
+			waypoint_num ++;
+			if(waypoint_num != waypoints.size())
+				ROS_INFO("go to waypoint %d",waypoint_num);
+			else{
+				ROS_INFO("all waypoints reached");
+				state = autopilot_state::land;
+			}
 		}
 	}
-	if(get_mission() == 2){
-		if(is_arrived_xy() == true){
-			mission = 3;
-		}
-	}
-	if(get_mission() == 3){
-		if(is_arrived_xy() == true){
-			mission = 4;
-		}
-	}
-	if (get_mission() == 4){
+	if (get_state() == autopilot_state::land){
 		land();
+		ROS_INFO_ONCE("start landing");
 		if(is_arrived_z() == true){
 			land_ok = true;
+			std::cout << "ready to disarm\n";
+			state = autopilot_state::not_flying;
+			in_mission = false;
 		}
 	}
 }
 
-void autopilot::set_position(double *msg){
-	
+void autopilot::mission_stop(){
+	if(in_mission == true){
+		std::cout <<"mission stop!\n";
+		state = autopilot_state::pose;
+		in_mission = false;
+		target_now[0] = pose_now[0];
+		target_now[1] = pose_now[1];
+		target_now[2] = pose_now[2];
+	}
+	else{
+		std::cout << "not in mission\n";
+	}	
+}
+
+void autopilot::mission_start(){
+	if (in_mission == false){
+	state = autopilot_state::takeoff;
+	in_mission = true;
+	waypoint_num = 0;
+	pose_start[0] = pose_now[0];
+	pose_start[1] = pose_now[1];
+	pose_start[2] = pose_now[2];
+	}
+	else{
+		std::cout << "already in mission\n";
+	}
+}
+void autopilot::add_waypoint(double latitude,double longitude,double altitude){
+    sensor_msgs::NavSatFix temp;
+	temp.latitude = latitude;
+	temp.longitude = longitude;
+	temp.altitude = altitude;
+	this->waypoints.push_back(temp);	
+}
+
+void autopilot::add_waypoint(sensor_msgs::NavSatFix msg){
+	this->waypoints.push_back(msg);	
+}
+
+void autopilot::add_waypoint(double *msg){
+    sensor_msgs::NavSatFix temp;
+	temp.latitude = msg[0];
+	temp.longitude = msg[1];
+	temp.altitude = msg[2];
+	this->waypoints.push_back(temp);	
+}
+
+void autopilot::show_waypoints(){
+    sensor_msgs::NavSatFix temp;
+	char str[100];
+	std::cout << "show waypoints\n\n" ;
+	for(int i=0;i<this->waypoints.size();i++){
+        temp = this->waypoints[i];
+		sprintf(str, "waypoint %d: \tlatitude:%lf\tlongitude:%lf\taltitude:%lf\n", i,temp.latitude,temp.longitude,temp.altitude);
+		std::cout << str;
+    }
 }
 
 void  autopilot::takeoff(){
-	target_now[0] = 0;
-	target_now[1] = 0;
+	target_now[0] = pose_start[0];
+	target_now[1] = pose_start[1];
 	target_now[2] = 1;
 }
 
@@ -93,8 +158,8 @@ bool autopilot::get_land_ok(){
 	return land_ok;
 }
 
-int autopilot::get_mission(){
-	return mission;
+autopilot_state autopilot::get_state(){
+	return state;
 }
 
 double* autopilot::get_target_now(){

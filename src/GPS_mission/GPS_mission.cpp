@@ -54,7 +54,6 @@ void gps_pos_cb(const sensor_msgs::NavSatFix::ConstPtr& msg) {
 	double latitude = msg->latitude;
 	double longitude = msg->longitude;
 	double altitude = msg->altitude;
-	
 	//set home point
 	if(gps.is_init() == false){ 
 		
@@ -72,38 +71,20 @@ void gps_pos_cb(const sensor_msgs::NavSatFix::ConstPtr& msg) {
 	*/	
 }
 
-
-void host_pos(const geometry_msgs::PoseStamped::ConstPtr& msg)
-{
-
-	host_mocap = *msg;
-	if(init == 0){
-	offset = host_mocap;
-	init = true;
-	}
-
-}
-
-
 void follow(double* desired , double* recent, geometry_msgs::TwistStamped* vs, float dis_x, float dis_y)
 {
 	float err_x, err_y, err_z, err_roll;
 	float u_x, u_y, u_z, u_roll;
-	//float dis_x = 0, dis_y = -0.5;
-	float local_x, local_y;
 /*
-	local_x = cos(vir.roll)*dis_x+sin(vir.roll)*dis_y;
-	local_y = -sin(vir.roll)*dis_x+cos(vir.roll)*dis_y;
 
 
 		
-	err_roll = vir.roll - tf::getYaw(host_mocap.pose.orientation);
+	err_roll = desired[3] - tf::getYaw(temp.pose.orientation);
 	if(err_roll>pi)
 		err_roll = err_roll - 2*pi;
 	else if(err_roll<-pi)
 		err_roll = err_roll + 2*pi;
 
-	//ROS_INFO("err_roll: %.3f",err_roll);
 */
 	err_x = desired[0] - recent[0];
 	err_y = desired[1] - recent[1];
@@ -169,19 +150,21 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "GPS_follow_test");
     ros::NodeHandle nh;
-
+//Subscriber
     ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>
                                 ("/mavros/state", 10, state_cb);
-    ros::Subscriber host_sub = nh.subscribe<geometry_msgs::PoseStamped>("mavros/local_position/pose", 10, host_pos);
     ros::Subscriber gps_sub = nh.subscribe<sensor_msgs::NavSatFix>("/mavros/global_position/global", 10, gps_pos_cb);	//gps position
-    ros::Publisher local_vel_pub = nh.advertise<geometry_msgs::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
+
+//Publisher
+	ros::Publisher local_vel_pub = nh.advertise<geometry_msgs::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
     ros::Publisher local_pos_pub = nh.advertise<geometry_msgs::PoseStamped>
                                    ("/mavros/setpoint_position/local", 10);
-    ros::ServiceClient arming_client = nh.serviceClient<mavros_msgs::CommandBool>
+//Service
+	ros::ServiceClient arming_client = nh.serviceClient<mavros_msgs::CommandBool>
                                        ("/mavros/cmd/arming");
     ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>
                                          ("/mavros/set_mode");
- ros::ServiceClient land_client = nh.serviceClient<mavros_msgs::CommandTOL>
+	ros::ServiceClient land_client = nh.serviceClient<mavros_msgs::CommandTOL>
       ("mavros/cmd/land");
     // The setpoint publishing rate MUST be faster than 2Hz.
     ros::Rate rate(100);
@@ -205,21 +188,8 @@ int main(int argc, char **argv)
     vs.twist.angular.y = 0;
     vs.twist.angular.z = 0;
 
-	vir1.x = 0;
-	vir1.y = 0;
-	vir1.z = 0.3;
-	vir1.roll = 0;
 
     //send a few setpoints before starting
-   for(int i = 100; ros::ok() && i > 0; --i){
-        local_vel_pub.publish(vs);
-//		mocap_pos_pub.publish(host_mocap);
-	vir1.x=offset.pose.position.x;
-	vir1.y=offset.pose.position.y;
-	vir1.z=offset.pose.position.z;	
-	ros::spinOnce();
-        rate.sleep();
-    }
 
     mavros_msgs::SetMode offb_set_mode;
     offb_set_mode.request.custom_mode = "OFFBOARD";
@@ -227,32 +197,63 @@ int main(int argc, char **argv)
     mavros_msgs::CommandBool arm_cmd;
     arm_cmd.request.value = true;
 
-    ros::Time last_request = ros::Time::now();
-	//ros::Time last_request(0);
-
-        if (current_state.mode != "OFFBOARD"){
-            if( set_mode_client.call(offb_set_mode) &&
-                    offb_set_mode.response.mode_sent) {
-                ROS_INFO("Offboard enabled");
-            }
-            last_request = ros::Time::now();
-        } 
-	
-
-        if (!current_state.armed){
-                if( arming_client.call(arm_cmd) &&
-                        arm_cmd.response.success) {
-                    ROS_INFO("Vehicle armed");
-                }
-                last_request = ros::Time::now();
-        }
-       while(gps.is_init()==false){
+    while(gps.is_init()==false){
 		ros::spinOnce();
-        	rate.sleep();
-       }
-       autopilot ap(gps);
+        rate.sleep();
+    }
+    autopilot ap(gps);
+	ap.add_waypoint(47.3977545,8.5457408,535.5597166987343);
+	ap.add_waypoint(47.3978816,8.5459172,535.8185302211843);
+	ap.show_waypoints();
+	char check;
+	cout <<"start to fly?[y\\n]";
+	while(cin >> check){
+		if(check == 'n')
+			return 0;
+		else if(check == 'y')
+			break;
+		cout <<"start to fly?[y\\n]";
+	}
+    local_vel_pub.publish(vs);
+	if (current_state.mode != "OFFBOARD"){
+		if( set_mode_client.call(offb_set_mode) &&
+			offb_set_mode.response.mode_sent) {
+		ROS_INFO("Offboard enabled");
+		}
+	} 
+
+
+	if (!current_state.armed){
+		if( arming_client.call(arm_cmd) &&
+				arm_cmd.response.success) {
+			ROS_INFO("Vehicle armed");
+		}
+	}
+
     while (ros::ok()) {
-//	mocap_pos_pub.publish(host_mocap);
+
+		double now_pos[3];
+		gps.get_ENU(now_pos);
+		ap.update(now_pos);
+		if(ap.get_state() == autopilot_state::not_flying){
+			vs.twist.linear.x = 0;
+			vs.twist.linear.y = 0;
+			vs.twist.linear.z = 0;
+			vs.twist.angular.z = 0;
+		}
+		else{
+			follow(ap.get_target_now(),now_pos,&vs,0,0);
+		}
+		if(ap.get_land_ok() == true){
+	   		mavros_msgs::CommandTOL land_cmd;
+	   		land_cmd.request.yaw = 0;
+	    	land_cmd.request.latitude = 0;
+	    	land_cmd.request.longitude = 0;
+	    	land_cmd.request.altitude = 0;
+	    	land_client.call(land_cmd);
+			rate.sleep();
+			break;	
+		}
 
         int c = getch();
 	//ROS_INFO("C: %d",c);
@@ -270,6 +271,9 @@ int main(int argc, char **argv)
             case 68:    // key CCW(<-)
                 vir1.roll += 0.03;
                 break;
+			case 116:    // keyboard(t)		start
+                ap.mission_start();
+                break;
 			case 119:    // key foward
                 vir1.x += 0.05;
                 break;
@@ -282,56 +286,44 @@ int main(int argc, char **argv)
             case 100:    // key right
                 vir1.y -= 0.05;
                 break;
-	    	case 115:    // key right
-		{
-		vir1.x = offset.pose.position.x;
-      	vir1.y = offset.pose.position.y;
-		vir1.z = offset.pose.position.z+0.2;
-		vir1.roll = 0;
+            case 112:    // keyboard(p)		stop at recent position
+            {
+				std::cout <<"im here"<<std::endl;
+				ap.mission_stop();
+				break;
+			}
+            case 113:    // key board(q)	kill by keyboard
+			{
+				offb_set_mode.request.custom_mode = "MANUAL";
+				set_mode_client.call(offb_set_mode);
+				arm_cmd.request.value = false;
+				arming_client.call(arm_cmd);
                 break;
-		}
-		case 108:    // close arming
-			{/*
-			offb_set_mode.request.custom_mode = "MANUAL";
-			set_mode_client.call(offb_set_mode);
-			arm_cmd.request.value = false;
-			arming_client.call(arm_cmd);*/
+			}
+	    	case 115:    // key right
+			{
+				vir1.x = offset.pose.position.x;
+				vir1.y = offset.pose.position.y;
+				vir1.z = offset.pose.position.z+0.2;
+				vir1.roll = 0;
+						break;
+			}
+			case 108:    // key_board(l)	land
+			{
 			    mavros_msgs::CommandTOL land_cmd;
 			    land_cmd.request.yaw = 0;
 			    land_cmd.request.latitude = 0;
 			    land_cmd.request.longitude = 0;
 			    land_cmd.request.altitude = 0;
 			    land_client.call(land_cmd);
-            break;
+            	break;
 			}
             case 63:
                 return 0;
                 break;
             }
         }
-		if(vir1.roll>pi)
-		vir1.roll = vir1.roll - 2*pi;
-		else if(vir1.roll<-pi)
-		vir1.roll = vir1.roll + 2*pi;
-
-        //ROS_INFO("setpoint: %.2f, %.2f, %.2f, %.2f", vir1.x, vir1.y, vir1.z, vir1.roll/pi*180);
-	//follow(vir1,host_mocap,&vs,0,0);
-//        mocap_pos_pub.publish(host_mocap);
-//	std::system("clear");
 	
-	double now_pos[3];
-	gps.get_ENU(now_pos);
-	ap.update(now_pos);
-	cout << "now_pos \tx:"<<now_pos[0]<<"\ty:"<<now_pos[1]<<"\tz:"<<now_pos[2]<<endl;
-	follow(ap.get_target_now(),now_pos,&vs,0,0);
-	if(ap.get_land_ok() == true){
-	    mavros_msgs::CommandTOL land_cmd;
-	    land_cmd.request.yaw = 0;
-	    land_cmd.request.latitude = 0;
-	    land_cmd.request.longitude = 0;
-	    land_cmd.request.altitude = 0;
-	    land_client.call(land_cmd);	
-	}
 	
 
 
