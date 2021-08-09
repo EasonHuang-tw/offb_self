@@ -202,7 +202,7 @@ int main(int argc, char **argv)
         rate.sleep();
     }
     autopilot ap(gps);
-	ap.add_waypoint(47.3977545,8.5457408,535.5597166987343);
+	ap.add_waypoint(47.3977545,8.5457408,535.5597166987343);	//lat long alt
 	ap.add_waypoint(47.3978816,8.5459172,535.8185302211843);
 	ap.show_waypoints();
 	char check;
