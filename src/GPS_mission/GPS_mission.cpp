@@ -25,11 +25,11 @@
 #define KPz 1.0f//
 #define KProll 1.0f//1  2
 
-
 bool init=0;
 
 //
 gps_transform gps;
+autopilot ap(gps);
 
 
 using namespace std;
@@ -69,6 +69,19 @@ void gps_pos_cb(const sensor_msgs::NavSatFix::ConstPtr& msg) {
 	double enu_msg[3];
 	gps.get_ENU(enu_msg);
 	*/	
+}
+
+void tf_Callback(const tf2_msgs::TFMessage::ConstPtr &msg){
+	double vector_x = msg->transforms.back().transform.translation.x;
+	double vector_y = msg->transforms.back().transform.translation.y;
+	//double vectorz =  msg->transforms.back().transform.translation.z;
+	std::cout << "Vector X is :" << msg->transforms.back().transform.translation.x << '\n';
+	std::cout << "Vector Y is :" << msg->transforms.back().transform.translation.y << '\n';
+	//std::cout << "Vector Z is :" << msg->transforms.back().transform.translation.z << '\n'; // z dont need  to show
+
+	ap.apriltag_update(vector_x,vector_y);
+	ap.detection_and_move(vector_x,vector_y);
+
 }
 
 void follow(double* desired , double* recent, geometry_msgs::TwistStamped* vs, float dis_x, float dis_y)
@@ -154,6 +167,7 @@ int main(int argc, char **argv)
     ros::Subscriber state_sub = nh.subscribe<mavros_msgs::State>
                                 ("/mavros/state", 10, state_cb);
     ros::Subscriber gps_sub = nh.subscribe<sensor_msgs::NavSatFix>("/mavros/global_position/global", 10, gps_pos_cb);	//gps position
+	ros::Subscriber sub = nh.subscribe("tf", 1000, tf_Callback);//callback tf topic
 
 //Publisher
 	ros::Publisher local_vel_pub = nh.advertise<geometry_msgs::TwistStamped>("/mavros/setpoint_velocity/cmd_vel", 10);
@@ -201,7 +215,7 @@ int main(int argc, char **argv)
 		ros::spinOnce();
         rate.sleep();
     }
-    autopilot ap(gps);
+    
 	ap.add_waypoint(47.3977545,8.5457408,535.5597166987343);
 	ap.add_waypoint(47.3978816,8.5459172,535.8185302211843);
 	ap.show_waypoints();
