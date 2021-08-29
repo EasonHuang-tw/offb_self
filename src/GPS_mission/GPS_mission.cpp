@@ -202,8 +202,10 @@ int main(int argc, char **argv)
         rate.sleep();
     }
     autopilot ap(gps);
-	ap.add_waypoint(47.3977545,8.5457408,535.5597166987343);	//lat long alt
-	ap.add_waypoint(47.3978816,8.5459172,535.8185302211843);
+	ap.add_waypoint(24.7866518,120.9930521,80.9195742537);	//lat long alt
+	ap.add_waypoint(24.786642,120.9931584,80.9044255018);
+	ap.add_waypoint(24.7867009,120.9931797,80.9751696513);
+	ap.add_waypoint(24.7867117,120.9930547,80.5301738055);
 	ap.show_waypoints();
 	char check;
 	cout <<"start to fly?[y\\n]";

@@ -47,7 +47,7 @@ void autopilot::update(double *recent_pose){
 
 		this->gps.update(lat,lon,alt);
 		this->gps.get_ENU(target_now);
-		target_now[2] = 1;
+		target_now[2] = 2;
 		if(is_arrived_xy() == true){
 			waypoint_num ++;
 			if(waypoint_num != waypoints.size())
@@ -131,7 +131,7 @@ void autopilot::show_waypoints(){
 void  autopilot::takeoff(){
 	target_now[0] = pose_start[0];
 	target_now[1] = pose_start[1];
-	target_now[2] = 1;
+	target_now[2] = 2;
 }
 
 void autopilot::land(){
