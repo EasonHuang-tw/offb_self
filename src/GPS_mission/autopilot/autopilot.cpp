@@ -63,11 +63,9 @@ void autopilot::update(double *recent_pose){
 				ROS_INFO("all waypoints reached");
 				state = autopilot_state::detection_and_move;
 				if(get_state() == autopilot_state::detection_and_move){
-					detection_and_move(camera_err_x,camera_err_y);
+					detection_and_move(this->vector_x,this->vector_y);
 				}
-				//if(get_state() == autopilot_state::apriltag ){
-				//set_target_to_apriltag(now_pose); //get new target
-				//	apriltag(vector_x,vector_y);  //inside should be the comparison of tf 
+
 				}
 			}
 		}
@@ -161,12 +159,12 @@ void autopilot::detection_and_move(double vector_x,double vector_y){
 	target_now[1] = pose_now[1] + camera_err_y;
 	state = autopilot_state::apriltag;
 }
-void autopilot::apriltag(double vector_x,double vector_y){
+/*void autopilot::apriltag(double vector_x,double vector_y){
 	if(fabs(vector_x) < 0.01 && fabs(vector_y) < 0.01  ){//if ENU transorm is accurate it should go to land
 		ROS_INFO("drone is aboved  apriltag ready to land");
 		state = autopilot_state::land;
 	}
-}
+}*/
 
 void autopilot::land(){
 	target_now[0] = pose_now[0];

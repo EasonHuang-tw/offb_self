@@ -15,8 +15,8 @@ class gps_transform{
 		void get_ECEF(double*);	
 		void get_ENU(double*);
 		void get_home_ECEF(double*);
-		void apriltag_update(double vector_x,double vector_y);
-		void detection_and_move(double vector_x,double vector_y);
+		//void apriltag_update(double vector_x,double vector_y);
+		//void detection_and_move(double vector_x,double vector_y);
 		bool is_init();	
 		
 	private:

@@ -75,12 +75,12 @@ void tf_Callback(const tf2_msgs::TFMessage::ConstPtr &msg){
 	double vector_x = msg->transforms.back().transform.translation.x;
 	double vector_y = msg->transforms.back().transform.translation.y;
 	//double vectorz =  msg->transforms.back().transform.translation.z;
-	std::cout << "Vector X is :" << msg->transforms.back().transform.translation.x << '\n';
-	std::cout << "Vector Y is :" << msg->transforms.back().transform.translation.y << '\n';
+	//std::cout << "Vector X is :" << msg->transforms.back().transform.translation.x << '\n';
+	//std::cout << "Vector Y is :" << msg->transforms.back().transform.translation.y << '\n';
 	//std::cout << "Vector Z is :" << msg->transforms.back().transform.translation.z << '\n'; // z dont need  to show
 
 	ap.apriltag_update(vector_x,vector_y);
-	ap.detection_and_move(vector_x,vector_y);
+	//ap.detection_and_move(vector_x,vector_y);
 
 }
 

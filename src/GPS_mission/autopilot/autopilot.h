@@ -7,7 +7,7 @@
 
 
 enum autopilot_state{not_flying,takeoff,pose,waypoint,land,apriltag,detection_and_move};
-void tf_Callback(const tf2_msgs::TFMessage::ConstPtr &msg);
+//void tf_Callback(const tf2_msgs::TFMessage::ConstPtr &msg);
 class autopilot{
 	public:
 		autopilot(gps_transform gps);
@@ -43,7 +43,7 @@ class autopilot{
 		int waypoint_num = 0;	
 
 		double vector_x,vector_y;
-		double camera_err_x,camera_err_y;
+		//double camera_err_x,camera_err_y;
 		
 		double target_now[3];
 		double pose_now[3];
